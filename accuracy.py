@@ -84,16 +84,21 @@ def _join_spans(spans) -> str:
 
 
 def pdf_lines(pdf_path: str, password: str | None = None,
-              scanned_pages: set[int] | None = None) -> list[dict]:
+              scanned_pages: set[int] | None = None,
+              ocr_cache: dict | None = None) -> list[dict]:
     """Every line of the PDF, in order: {page, text, size, diagonal}."""
     doc = open_pdf(pdf_path, password)
     lines = []
     try:
         for page in doc:
             if scanned_pages and page.number in scanned_pages:
-                from converter import ocr_page_lines
+                if ocr_cache is not None and page.number in ocr_cache:
+                    recognised = ocr_cache[page.number]
+                else:
+                    from converter import ocr_page_lines
+                    recognised = ocr_page_lines(page)
                 found = [{"text": l["text"], "size": 11, "diagonal": False}
-                         for l in ocr_page_lines(page)]
+                         for l in recognised]
             else:
                 found = visible_lines(page)
             for ln in found:

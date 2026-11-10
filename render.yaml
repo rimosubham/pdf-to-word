@@ -9,3 +9,7 @@ services:
         value: "25"
       - key: MAX_PARALLEL
         value: "1"
+      - key: OCR_DPI
+        value: "200"
+      - key: OMP_THREAD_LIMIT
+        value: "1"

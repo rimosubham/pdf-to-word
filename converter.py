@@ -12,7 +12,6 @@ layer. In OCR mode, pages that *do* have a text layer still use it directly.
 """
 from __future__ import annotations
 
-import io
 import logging
 import os
 import statistics
@@ -30,7 +29,7 @@ logging.getLogger("pdf2docx").setLevel(logging.ERROR)
 logging.getLogger().setLevel(logging.ERROR)
 
 MIN_CHARS_FOR_TEXT_PAGE = 25
-OCR_DPI = 300
+OCR_DPI = int(os.environ.get("OCR_DPI", 300))
 
 
 class ConversionError(Exception):
@@ -80,8 +79,9 @@ def convert(pdf_path: str, docx_path: str, password: str | None = None,
     repaired = 0
 
     if use_ocr:
-        _convert_ocr(pdf_path, docx_path, password, scanned, progress)
-        lines = accuracy.pdf_lines(pdf_path, password, scanned)
+        ocr_cache: dict[int, list[dict]] = {}     # recognise each page once
+        _convert_ocr(pdf_path, docx_path, password, scanned, progress, ocr_cache)
+        lines = accuracy.pdf_lines(pdf_path, password, scanned, ocr_cache)
     else:
         lines = accuracy.pdf_lines(pdf_path, password, scanned)
 
@@ -167,9 +167,14 @@ def ocr_page_lines(page) -> list[dict]:
     origin top-left."""
     from PIL import Image
 
-    pix = page.get_pixmap(dpi=OCR_DPI, alpha=False)
-    img = Image.open(io.BytesIO(pix.tobytes("png")))
-    lines = _ocr_vision(img) if _ocr_engine() == "vision" else _ocr_tesseract(img)
+    # Greyscale keeps a 300-dpi page to ~8 MB instead of ~25 MB; small servers need that.
+    pix = page.get_pixmap(dpi=OCR_DPI, alpha=False, colorspace=pymupdf.csGRAY)
+    img = Image.frombytes("L", (pix.width, pix.height), pix.samples)
+    del pix
+    try:
+        lines = _ocr_vision(img) if _ocr_engine() == "vision" else _ocr_tesseract(img)
+    finally:
+        img.close()
     return _reading_order(lines)
 
 
@@ -272,7 +277,8 @@ def _paragraphs(lines: list[dict]) -> list[str]:
     return out
 
 
-def _convert_ocr(pdf_path, docx_path, password, scanned: set[int], progress) -> None:
+def _convert_ocr(pdf_path, docx_path, password, scanned: set[int], progress,
+                 ocr_cache: dict | None = None) -> None:
     doc = pymupdf.open(pdf_path)
     if doc.needs_pass:
         doc.authenticate(password or "")
@@ -283,8 +289,12 @@ def _convert_ocr(pdf_path, docx_path, password, scanned: set[int], progress) -> 
     try:
         for page in doc:
             try:
-                lines = (ocr_page_lines(page) if page.number in scanned
-                         else _text_layer_lines(page))
+                if page.number in scanned:
+                    lines = ocr_page_lines(page)
+                    if ocr_cache is not None:
+                        ocr_cache[page.number] = lines
+                else:
+                    lines = _text_layer_lines(page)
             except Exception as exc:
                 raise ConversionError(f"Text recognition failed on page "
                                       f"{page.number + 1} ({exc}).") from exc
