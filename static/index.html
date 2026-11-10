@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF to Word Converter</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --ink: #14181f; --muted: #5d6675; --line: #dfe3ea;
+    --brand: #1f5fd6; --brand-ink: #ffffff; --brand-soft: #eaf1fe;
+    --good: #12805c; --good-soft: #e4f5ee; --warn: #9a6400; --warn-soft: #fdf2d9;
+    --bad: #b3261e; --bad-soft: #fdeceb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1218; --card: #181c25; --ink: #eef1f6; --muted: #9aa4b5; --line: #2b3240;
+      --brand: #6ea0ff; --brand-ink: #0b1220; --brand-soft: #1b2740;
+      --good: #4fd3a4; --good-soft: #12302a; --warn: #f0c060; --warn-soft: #33290f;
+      --bad: #ff8a80; --bad-soft: #3a1816;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 56px 16px 72px; }
+  h1 { font-size: clamp(28px, 5vw, 38px); line-height: 1.15; margin: 0 0 8px; letter-spacing: -0.02em; }
+  .lede { color: var(--muted); margin: 0 0 28px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  [hidden] { display: none !important; }
+
+  #drop { display: block; border: 2px dashed var(--line); border-radius: 12px; padding: 44px 16px;
+          text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+  #drop:hover, #drop.over, #drop:focus-within { border-color: var(--brand); background: var(--brand-soft); }
+  #drop svg { width: 44px; height: 44px; color: var(--brand); }
+  #drop strong { display: block; font-size: 18px; margin-top: 10px; }
+  #drop span { color: var(--muted); font-size: 14px; }
+  #file { position: absolute; opacity: 0; width: 1px; height: 1px; }
+
+  .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .fname { font-weight: 600; overflow-wrap: anywhere; flex: 1 1 200px; }
+  .fsize { color: var(--muted); font-size: 14px; }
+  button, .btn { font: inherit; font-weight: 600; border-radius: 10px; padding: 11px 18px; cursor: pointer;
+                 border: 1px solid transparent; text-decoration: none; display: inline-block; }
+  .primary { background: var(--brand); color: var(--brand-ink); }
+  .primary:hover { filter: brightness(1.08); }
+  .ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  .ghost:hover { border-color: var(--muted); }
+  input[type=password] { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+                         background: var(--bg); color: var(--ink); flex: 1 1 200px; min-width: 0; }
+
+  .spinner { width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--line);
+             border-top-color: var(--brand); animation: spin .8s linear infinite; flex: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+
+  .score { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; margin: 4px 0 16px; }
+  .num { font-size: 46px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+  .pill { font-size: 13px; font-weight: 600; padding: 4px 10px; border-radius: 99px; }
+  .good { color: var(--good); } .pill.good { background: var(--good-soft); }
+  .warn { color: var(--warn); } .pill.warn { background: var(--warn-soft); }
+  .bad  { color: var(--bad);  } .pill.bad  { background: var(--bad-soft); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 0 0 16px; }
+  .stats div { background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+  .stats dt { color: var(--muted); font-size: 12.5px; }
+  .stats dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .note { font-size: 14px; border-radius: 10px; padding: 10px 12px; margin: 0 0 16px; }
+  .note.info { background: var(--bg); color: var(--muted); }
+  .note.warn { background: var(--warn-soft); } .note.bad { background: var(--bad-soft); }
+  details { font-size: 14px; color: var(--muted); margin-bottom: 16px; }
+  details code { background: var(--bg); padding: 1px 6px; border-radius: 6px; color: var(--ink); }
+  .foot { color: var(--muted); font-size: 13.5px; margin-top: 20px; }
+  .foot li { margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>PDF to Word Converter</h1>
+  <p class="lede">Upload a PDF, get an editable .docx. Every conversion is checked against the original text and scored.</p>
+
+  <div class="card">
+    <!-- 1. choose -->
+    <section id="s-choose">
+      <label id="drop" for="file">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4m0 0-4 4m4-4 4 4"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+        <strong>Drop a PDF here or click to choose</strong>
+        <span id="limit">PDF files only</span>
+        <input id="file" type="file" accept="application/pdf,.pdf">
+      </label>
+    </section>
+
+    <!-- 2. ready -->
+    <section id="s-ready" hidden>
+      <div class="row">
+        <span class="fname" id="fname"></span><span class="fsize" id="fsize"></span>
+      </div>
+      <div class="row" id="pw-row" hidden style="margin-top:12px">
+        <input id="password" type="password" placeholder="PDF password" autocomplete="off">
+      </div>
+      <div class="row" style="margin-top:16px">
+        <button class="primary" id="go">Convert to Word</button>
+        <button class="ghost" id="change">Choose another file</button>
+      </div>
+      <p class="note bad" id="err" hidden style="margin:16px 0 0"></p>
+    </section>
+
+    <!-- 3. working -->
+    <section id="s-work" hidden>
+      <div class="row"><div class="spinner"></div><div><strong id="work-title">Uploading…</strong><div class="fsize" id="work-sub"></div></div></div>
+    </section>
+
+    <!-- 4. done -->
+    <section id="s-done" hidden>
+      <div class="score">
+        <div class="num" id="acc"></div>
+        <div><span class="pill" id="verdict"></span><div class="fsize" id="acc-sub" style="margin-top:4px"></div></div>
+      </div>
+      <p class="note warn" id="ocr-note" hidden></p>
+      <p class="note info" id="extra-note" hidden></p>
+      <dl class="stats" id="stats"></dl>
+      <details id="diff" hidden><summary>Words that differ</summary><p id="diff-body"></p></details>
+      <div class="row">
+        <a class="btn primary" id="dl">Download Word file</a>
+        <button class="ghost" id="again">Convert another PDF</button>
+      </div>
+    </section>
+  </div>
+
+  <ul class="foot">
+    <li>Text accuracy = share of the PDF's characters reproduced in the Word file, with nothing added. Spacing and line wrapping are not counted.</li>
+    <li>Scanned PDFs are read with text recognition; the text is recovered but the layout is simplified.</li>
+    <li>Your upload is deleted as soon as it is converted; the Word file is deleted after one hour.</li>
+  </ul>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const sections = ['s-choose', 's-ready', 's-work', 's-done'];
+const show = id => sections.forEach(s => $(s).hidden = s !== id);
+let file = null, maxMb = null;
+fetch('/api/config').then(r => r.json()).then(c => { maxMb = c.max_mb; $('limit').textContent = `Up to ${maxMb} MB`; }).catch(() => {});
+
+const fmtSize = b => b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+
+function pick(f) {
+  if (!f) return;
+  if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') return fail('That file is not a PDF.', f);
+  if (maxMb && f.size > maxMb * 1048576) return fail(`That file is larger than ${maxMb} MB.`, f);
+  file = f;
+  $('fname').textContent = f.name; $('fsize').textContent = fmtSize(f.size);
+  $('err').hidden = true; $('pw-row').hidden = true; $('password').value = '';
+  show('s-ready');
+}
+function fail(msg, f) {
+  if (f) { file = f; $('fname').textContent = f.name; $('fsize').textContent = fmtSize(f.size); }
+  $('err').textContent = msg; $('err').hidden = false;
+  if (/password/i.test(msg)) $('pw-row').hidden = false;
+  show('s-ready');
+}
+function reset() { file = null; $('file').value = ''; show('s-choose'); }
+
+$('file').addEventListener('change', e => pick(e.target.files[0]));
+const drop = $('drop');
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => pick(e.dataTransfer.files[0]));
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
+$('change').onclick = reset; $('again').onclick = reset;
+
+$('go').onclick = async () => {
+  if (!file) return;
+  show('s-work'); $('work-title').textContent = 'Uploading…'; $('work-sub').textContent = file.name;
+  try {
+    const body = new FormData(); body.append('file', file);
+    if ($('password').value) body.append('password', $('password').value);
+    const r = await fetch('/api/convert', { method: 'POST', body });
+    const j = await r.json().catch(() => ({ error: 'The server returned an unexpected response.' }));
+    if (!r.ok) return fail(j.error || 'Upload failed.');
+    poll(j.id);
+  } catch { fail('Could not reach the converter. Is the server running?'); }
+};
+
+async function poll(id) {
+  try {
+    const r = await fetch('/api/status/' + id); const j = await r.json();
+    if (!r.ok) return fail(j.error);
+    if (j.status === 'error') return fail(j.error);
+    if (j.status === 'done') return done(id, j);
+    $('work-title').textContent = j.status === 'queued' ? 'Waiting for a free slot…' : 'Converting…';
+    $('work-sub').textContent = j.progress || file.name;
+    setTimeout(() => poll(id), 700);
+  } catch { fail('Lost connection to the converter.'); }
+}
+
+function done(id, j) {
+  const r = j.result, a = r.accuracy;
+  const cls = a == null ? 'warn' : a >= 99 ? 'good' : a >= 95 ? 'warn' : 'bad';
+  $('acc').textContent = a == null ? '—' : a.toFixed(a === 100 ? 0 : 2) + '%';
+  $('acc').className = 'num ' + cls;
+  $('verdict').className = 'pill ' + cls;
+  $('verdict').textContent = a == null ? 'No text to compare' : !r.verified ? 'Text recognised (not independently verified)'
+    : a >= 99 ? 'Text accuracy verified' : a >= 95 ? 'Minor differences — review' : 'Significant differences — review';
+  $('acc-sub').textContent = a == null ? (r.note || '') : `${r.source_words.toLocaleString()} words in the PDF, ${r.output_words.toLocaleString()} in the Word file`;
+
+  const ocr = r.engine === 'ocr' || r.scanned_pages > 0;
+  $('ocr-note').hidden = !ocr;
+  if (ocr) $('ocr-note').textContent = r.engine === 'ocr'
+    ? `This PDF is scanned (${r.scanned_pages} of ${r.pages} pages are images), so the text was read with text recognition. The score confirms everything recognised reached the Word file, but it cannot catch a misread character — proofread names and numbers. Layout is simplified to plain paragraphs.`
+    : `${r.scanned_pages} of ${r.pages} pages are scanned images. They were kept as pictures in the Word file, so their text is not editable.`;
+
+  const wm = r.watermark_words > 0, fixed = r.repaired_lines > 0;
+  $('extra-note').hidden = !(wm || fixed);
+  $('extra-note').textContent = [
+    fixed ? `${r.repaired_lines} line${r.repaired_lines > 1 ? 's' : ''} the layout engine dropped ${r.repaired_lines > 1 ? 'were' : 'was'} put back as plain text — check ${r.repaired_lines > 1 ? 'their' : 'its'} position.` : '',
+    wm ? `A diagonal watermark (${r.watermark_words} words) was left out.` : ''
+  ].filter(Boolean).join(' ');
+
+  const stat = (k, v) => `<div><dt>${k}</dt><dd>${v}</dd></div>`;
+  $('stats').innerHTML = stat('Pages', r.pages) + stat('Exact word match', r.word_accuracy == null ? '—' : r.word_accuracy + '%')
+    + stat('Time', r.seconds + ' s') + stat('File size', fmtSize(r.size));
+
+  const miss = r.missing || [], extra = r.extra || [];
+  $('diff').hidden = !(miss.length || extra.length);
+  $('diff-body').replaceChildren();
+  const list = (label, words) => {
+    if (!words.length) return;
+    const p = document.createElement('div'); p.append(label + ' ');
+    words.forEach(w => { const c = document.createElement('code'); c.textContent = w; p.append(c, ' '); });
+    $('diff-body').append(p);
+  };
+  list('In the PDF but not the Word file:', miss); list('In the Word file but not the PDF:', extra);
+
+  $('dl').href = '/api/download/' + id; $('dl').setAttribute('download', j.name);
+  show('s-done');
+}
+</script>
+</body>
+</html>
